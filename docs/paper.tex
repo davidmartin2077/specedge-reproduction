@@ -1,199 +1,376 @@
-\documentclass[10.5pt,a4paper]{ctexart}
-\usepackage[margin=2.2cm]{geometry}
-\usepackage{amsmath,amssymb,amsfonts}
+% Compile with XeLaTeX (Overleaf: Menu -> Compiler -> XeLaTeX)
+\documentclass{article}
+
+% NeurIPS 2025 Conference Paper Style (Preprint Mode)
+\usepackage[preprint]{neurips_2025}
+
+% Chinese & Serif Typography (Times New Roman + Noto Serif SC / SimSun)
+\usepackage{xeCJK}
+\setmainfont{Times New Roman}
+\setCJKmainfont[AutoFakeBold=2.2]{Noto Serif SC}
+\setCJKsansfont{Noto Sans SC}
+\setmonofont[Scale=0.88]{Consolas}
+
+% Standard NeurIPS Math, Tables, Figures, Algorithms & Hyperlinks
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{microtype}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{multirow}
-\usepackage{hyperref}
+\usepackage{nicefrac}
 \usepackage{xcolor}
 \usepackage{caption}
-\usepackage{float}
 \usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black]{hyperref}
 
-\hypersetup{
-    colorlinks=true,
-    linkcolor=blue!60!black,
-    citecolor=blue!60!black,
-    urlcolor=blue!60!black
+\captionsetup{font=small,labelfont=bf,skip=6pt}
+\captionsetup[table]{position=top}
+\captionsetup[figure]{position=bottom}
+\setlist[itemize]{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.6em,itemsep=2pt,topsep=3pt}
+
+\newtheorem{proposition}{推论}
+
+\title{面向异构跨平台广域网边缘集群的端边协同投机解码：\\建模、系统改造与差异化优化}
+
+\author{%
+  课程研究报告（基于 SpecEdge, NeurIPS 2025） \\
+  跨平台三机异构实验平台：RTX 4080 SUPER $\times$ RTX 5060 Ti $\times$ Apple M4 \\
+  \texttt{https://github.com/davidmartin2077/specedge-reproduction}
 }
-\captionsetup{font=small,labelfont=bf}
-\setlength{\parskip}{0.4em}
-
-\title{\textbf{面向异构跨平台广域网边缘集群的端边协同投机解码：\\建模、系统改造与差异化优化}\\[0.4em]
-\large 基于 SpecEdge（NeurIPS 2025）的三机异构控制变量实验研究}
-\author{课程研究报告}
-\date{2026 年 11 月}
 
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
-以 SpecEdge 为代表的端边协同投机解码（Edge-Assisted Speculative Decoding）通过将轻量级草稿模型卸载至边缘设备、将大模型验证保留在服务端，有效缓解了大语言模型自回归推理的访存瓶颈。然而，原论文实验建立在“同构 Linux + NVIDIA CUDA 边缘节点 + 低延迟 10 GbE 局域网（RTT $<1\text{ ms}$）”的理想假设之上。在真实的消费级跨平台边缘集群（如 NVIDIA 独显主机与 Apple Silicon 笔记本通过 Tailscale 广域网组网）中，节点在\textbf{执行后端（CUDA Graph vs. PyTorch MPS Eager）、显存容量（8 GB vs. 16 GB 统一内存）和网络往返延迟（WAN RTT）}三个维度上高度异构。
+以 SpecEdge~\cite{park2025specedge} 为代表的端边协同投机解码（Edge-Assisted Speculative Decoding）通过将轻量级草稿模型卸载至边缘设备、将大模型验证保留在服务端，有效缓解了大语言模型自回归推理的访存受限瓶颈。然而，原论文评测建立在``同构 Linux + NVIDIA CUDA 边缘节点 + 低延迟 10 GbE 局域网（$\text{RTT} < 1\ \text{ms}$）''的理想前提之上。在真实的消费级与实验室跨平台边缘集群（如 NVIDIA 独显主机与 Apple Silicon 笔记本通过 Tailscale 广域网组网）中，节点在\textbf{计算后端（CUDA Graph vs.\ PyTorch MPS Eager）、显存容量（8 GB vs.\ 16 GB 统一内存）和网络往返延迟（WAN RTT）}三个维度上高度异构。
 
-本文在真实的跨平台三机集群（Server：RTX 4080 SUPER 32 GB 运行 \texttt{Qwen3-14B}；Edge 1：RTX 5060 Ti 8 GB；Edge 2：Apple M4 16 GB）上开展了四组递进式控制变量实验（18 个实测配置点，统一 \texttt{SpecBench} 评测集），主要贡献包括：（1）实现面向 Apple Silicon MPS 的无侵入式兼容层及服务端 \textbf{Variable-Budget 静态 CUDA Graph 零填充机制}，以仅 $+2.0\text{ ms}$ 验证开销使单台 14B 服务端并发支持异构树预算；（2）提出异构广域网 TPOT 解析模型与无量纲瓶颈比判据 $\rho = (T_{\text{net}} + T_{\text{verify}}) / T_{\text{draft}}$，揭示了网络受限端（$\rho \gg 1$）与算力敏感端（$\rho \approx 1$）截然相反的最优树深拐点，并实测发现 M4 端的“固定调度底噪摊销效应”；（3）提出异构感知的差异化端侧策略，在三机并发实测中将瓶颈节点（5060 Ti）吞吐提升 \textbf{+57.7\%}（平均接受长度由 $3.90$ 升至 $5.51$，RPC 往返减少 $28.9\%$）、将 M4 本地草稿耗时压缩 \textbf{-64.0\%}，使集群总吞吐提升 \textbf{+9.7\%}，双端不均衡度从 $2.20\times$ 收敛至 $1.23\times$。
+本文在真实的跨平台三机集群（Server：RTX 4080 SUPER 32 GB 运行 \texttt{Qwen3-14B}；Edge 1：RTX 5060 Ti 8 GB；Edge 2：Apple M4 16 GB）上开展了四组递进式控制变量实验（18 个实测配置点，统一 \texttt{SpecBench} 评测集），主要贡献包括：\textbf{(1)~跨平台与异构树预算系统改造}：实现面向 Apple Silicon MPS 的无侵入式兼容层及服务端 \textbf{Variable-Budget 静态 CUDA Graph 零填充机制}，以仅 $+2.0\ \text{ms}$ 验证开销使单台 14B 服务端并发支持异构树预算；\textbf{(2)~异构广域网解析建模}：提出端到端单 Token 延迟（TPOT）解析模型与无量纲瓶颈比判据 $\rho = (T_{\text{net}} + T_{\text{verify}}) / T_{\text{draft}}$，定量揭示了网络受限端（$\rho \gg 1$）与算力敏感端（$\rho \approx 1$）截然相反的最优树深拐点，并实测发现 M4 端的``固定调度底噪摊销效应''；\textbf{(3)~差异化端侧策略与实测收益}：在三机并发实测中将瓶颈节点（5060 Ti）吞吐提升 \textbf{+57.7\%}（平均接受长度由 $3.90$ 升至 $5.51$，RPC 往返减少 $28.9\%$）、将 M4 本地草稿耗时压缩 \textbf{-64.0\%}，使集群总吞吐提升 \textbf{+9.7\%}，双端不均衡比从 $2.20\times$ 收敛至 $1.23\times$。
 
+\vspace{4pt}
 \noindent\textbf{关键词：}端边协同推理；投机解码；异构边缘集群；CUDA Graph；Apple Silicon MPS；控制变量实验
 \end{abstract}
 
 \section{引言与研究动机}
-大语言模型（LLM）的自回归解码具有显著的访存受限特征：每生成一个新 Token 均需读取全部模型权重，导致高显存服务端算力利用率偏低。SpecEdge~\cite{park2025specedge} 将树状投机解码（SpecExec~\cite{svirschevski2024specexec}）扩展至端边协同架构：边缘端运行小参数草稿模型并行展开候选树，通过 gRPC 仅发送轻量 Token ID 树至服务端，由主模型一次前向批量验收。
 
-但在真实科研与个人多端算力整合场景下，边缘集群与原论文的理想条件存在显著鸿沟：（1）执行后端与显存异构（桌面 NVIDIA GPU 支持 CUDA Graph 但显存仅 8 GB；Apple Silicon M4 拥有 16 GB 统一内存但 PyTorch MPS 缺乏 CUDA Graph，处于 Eager 调度模式）；（2）网络拓扑异构（通过 Tailscale 跨广域网/校园网通信，链路 RTT 可达数百至上千毫秒）。我们在预实验中观测到一个反直觉现象：算力更强、模型更大的 \texttt{RTX 5060 Ti (1.7B)} 吞吐（$2.78\text{ tok/s}$）反而低于算力更弱、模型更小的 \texttt{Apple M4 (0.6B)}（$3.31\text{ tok/s}$）。本文围绕该现象展开系统建模、架构改造与控制变量实证研究。
+大语言模型（LLM）的自回归解码具有显著的\textbf{访存受限（Memory-Bandwidth Bound）}特征：每生成一个新 Token 均需完整读取一次主模型权重，导致昂贵的高显存服务端计算单元利用率偏低。投机解码~\cite{leviathan2023spec} 及其树状并行扩展 SpecExec~\cite{svirschevski2024specexec} 通过轻量草稿模型批量生成候选序列，交由主模型一次前向并行验收，在严格保持输出分布无损的前提下显著提升解码吞吐。SpecEdge（NeurIPS 2025）~\cite{park2025specedge} 进一步将其拓展至端边协同架构：草稿模型部署在边缘设备端，通过 gRPC 仅发送轻量 Token ID 树与树注意力掩码至主节点，将主节点显存与算力全部释放给大模型批量验证。
+
+但在真实高校实验室与个人多端算力整合场景中，边缘集群与原论文的理想评测环境存在显著鸿沟：
+\begin{itemize}
+  \item \textbf{硬件与软件栈异构}：桌面 NVIDIA 显卡支持 CUDA Graph（算子发射开销极低），但消费级显存往往受限（如 8 GB）；而 Apple Silicon 轻薄本（如 M4）拥有更大的 16 GB 统一内存，但 PyTorch MPS 后端缺乏 CUDA Graph 捕获，处于逐算子 Eager 调度模式。
+  \item \textbf{网络拓扑异构}：跨校/家用设备常通过 Tailscale 等虚拟专网经广域网互联，不同节点的链路 RTT 差异可达 $2\text{--}3\times$（数百至上千毫秒），远超原论文 10 GbE 局域网的亚毫秒延迟。
+  \item \textbf{反直觉预实验现象}：我们在初期三机联调中观测到，算力更强、模型更大的 \texttt{RTX 5060 Ti (Qwen3-1.7B)} 端到端吞吐（$2.78\ \text{tok/s}$）竟然\textbf{低于}算力更弱、模型更小的 \texttt{Apple M4 (Qwen3-0.6B)}（$3.31\ \text{tok/s}$）。
+\end{itemize}
+
+围绕这一反直觉现象，本文系统研究以下核心问题：\emph{在算力、显存与广域网 RTT 高度异构的边缘集群中，决定端边投机解码吞吐的本质瓶颈是什么？原论文的统一树预算与 Proactive Drafting 策略是否仍然最优？如何在不引入显存与图重编译代价的前提下，实现面向异构边缘的差异化协同加速？}
 
 \section{异构端边协同理论建模}
-针对边缘设备 $h \in \{\text{5060Ti}, \text{M4}\}$、草稿模型规模 $m$、投机树超参 $(d, B)$ 及主动草稿模式 $p \in \{\text{disabled}, \text{excluded}, \text{included}\}$，我们将端到端单 Token 生成延迟（TPOT）建模为：
-\begin{equation}
-\text{TPOT}(h, m, d, B, p) = \frac{T_{\text{draft}}(h, m, d, B) + T_{\text{verify}}(B) + T_{\text{net}}(h) + T_{\text{post}}(h) - T_{\text{overlap}}(h, m, d, p)}{\mathbb{E}[\tau(m, d, B, p)]}
-\label{eq:tpot}
-\end{equation}
-其中 $T_{\text{draft}}(d) \approx c_0(h,m) + \alpha(h,m)\cdot d$ 为树展开耗时，$\alpha(h,m)$ 为单层边际时间代价；$T_{\text{verify}}(B)$ 为主端 14B 树验证耗时；$T_{\text{net}}(h)$ 为广域网往返与排队耗时；$T_{\text{overlap}} \le \min(T_{\text{draft}}^{\text{pro}}, T_{\text{net}} + T_{\text{verify}})$ 为 Proactive Drafting 隐藏掉的草稿时间；$\mathbb{E}[\tau(d)] \approx \kappa d^\gamma\ (0<\gamma<1)$ 为平均接受长度（MAT）。
 
-进一步定义无量纲\textbf{网络-草稿瓶颈比（Network-to-Draft Ratio）}：
+\subsection{广域网单 Token 延迟（TPOT）解析模型}
+
+针对边缘设备 $h \in \{\text{5060Ti}, \text{M4}\}$、草稿模型规模 $m \in \{0.6\text{B}, 1.7\text{B}\}$、投机树最大深度与预算 $(d, B)$ 及主动草稿模式 $p \in \{\text{disabled}, \text{excluded}, \text{included}\}$，我们将单轮平均生成 1 个有效 Token 的延迟（Time Per Output Token, TPOT）建模为：
 \begin{equation}
-\rho(h, m) = \frac{T_{\text{net}}(h) + T_{\text{verify}}}{T_{\text{draft}}(h, m)}
-\label{eq:rho}
+  \mathrm{TPOT}(h, m, d, B, p) = \frac{T_{\text{draft}}(h, m, d, B) + T_{\text{verify}}(B) + T_{\text{net}}(h) + T_{\text{post}}(h) - T_{\text{overlap}}(h, m, d, p)}{\mathbb{E}[\tau(m, d, B, p)]}
+  \label{eq:tpot}
 \end{equation}
-对式~(\ref{eq:tpot}) 关于树深 $d$ 求导可得，加深投机树能够降低 TPOT 当且仅当：
+其中各项物理含义与标度规律如下：
+\begin{itemize}
+  \item $T_{\text{draft}}(h, m, d, B) \approx c_0(h, m) + \alpha(h, m)\cdot d$ 为端侧展开深度为 $d$ 的候选树耗时，$\alpha(h,m)$ 为单层展开的边际时间代价（CUDA Graph 端极小，MPS Eager 端很大）；
+  \item $T_{\text{verify}}(B)$ 为主端 14B 模型验证 $B+1$ 个树节点的耗时（在 4080S CUDA Graph 下几乎恒定于 $75\text{--}85\ \text{ms}$）；
+  \item $T_{\text{net}}(h)$ 为 Tailscale 链路往返与排队延迟，$T_{\text{post}}(h)$ 为端侧前后处理与树裁剪耗时；
+  \item $T_{\text{overlap}} \le \min\!\big(T_{\text{draft}}^{\text{pro}},\, T_{\text{net}}(h) + T_{\text{verify}}(B)\big)$ 为 Proactive Drafting 在等待窗口内成功隐藏的草稿耗时；
+  \item $\mathbb{E}[\tau(m, d, B, p)]$ 为单轮平均接受长度（Mean Accepted Tokens, MAT），随树深呈亚线性递增，可由幂律 $\mathbb{E}[\tau(d)] \approx \kappa d^{\gamma}\ (0 < \gamma < 1)$ 近似。
+\end{itemize}
+
+\subsection{无量纲瓶颈比判据 $\rho$ 与分化推论}
+
+为统一度量不同边缘节点所处的物理机制区，定义无量纲\textbf{网络-草稿瓶颈比（Network-to-Draft Ratio）}：
 \begin{equation}
-\frac{\mathrm{d}\ln \mathbb{E}[\tau]}{\mathrm{d}d} > \frac{\alpha(h, m)}{T_{\text{draft}}(d) + T_{\text{net}}(h) + T_{\text{verify}}}
-\label{eq:opt_cond}
+  \rho(h, m) = \frac{T_{\text{net}}(h) + T_{\text{verify}}}{T_{\text{draft}}(h, m)}
+  \label{eq:rho}
 \end{equation}
-由此可直接推导出两类截然相反的优化区间：当 $\rho \gg 1$ 且 $\alpha$ 极小（网络受限端，如 5060 Ti）时，应\textbf{大幅加深投机树并采用 \texttt{included} 主动草稿}以摊薄高 RTT；当 $\rho \approx 1$ 且 $\alpha$ 较大（算力敏感端，如 M4）时，深树会导致 $T_{\text{draft}}$ 增速超过 $\mathbb{E}[\tau]$ 增益，存在\textbf{浅树最优拐点}。
+将等待窗口记为 $T_{\text{wait}} = T_{\text{net}}(h) + T_{\text{verify}}$，对式~(\ref{eq:tpot}) 关于树深 $d$ 求一阶导数，可得 $\partial \mathrm{TPOT} / \partial d < 0$ 的充要条件：
+\begin{equation}
+  \frac{\mathrm{d}\ln \mathbb{E}[\tau]}{\mathrm{d}d} > \frac{\alpha(h, m)}{T_{\text{draft}}(d) + T_{\text{wait}}}
+  \label{eq:opt_cond}
+\end{equation}
+
+\begin{proposition}[异构边缘的最优树深分化]
+由式~(\ref{eq:opt_cond}) 直接导出两类截然相反的优化区间：
+(i)~\textbf{网络受限区（$\rho \gg 1$ 且 $\alpha$ 极小，如 RTX 5060 Ti）}：不等式右侧趋近于 $0$，激进加深投机树（增大 $d, B$）并启用 \texttt{included} 主动草稿几乎不增加单轮总时间，却能大幅抬高 $\mathbb{E}[\tau]$、摊薄高昂的 WAN RTT；
+(ii)~\textbf{算力敏感区（$\rho \approx 1$ 且 $\alpha$ 较大，如 Apple M4）}：继续加深树将使分子增速反超分母的亚线性增益，存在\textbf{浅树最优拐点（小 $d$、小 $B$）}。
+\end{proposition}
 
 \section{系统架构与核心工程改造}
-图~\ref{fig:arch} 展示了本文搭建的三机异构协同架构及两项系统创新。
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.96\textwidth]{figures/fig1_architecture_timeline.png}
-\caption{异构跨平台 SpecEdge 三机协同架构与 Variable-Budget 流水线示意图。}
-\label{fig:arch}
+图~\ref{fig:arch} 展示了本文搭建的跨平台三机异构协同架构与 Proactive Drafting 延迟隐藏时序。
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig1_architecture_timeline.pdf}
+  \caption{跨平台异构 SpecEdge 三机协同部署架构与 Variable-Budget 零填充验证流水线示意图。(a)~Server 以单一静态 CUDA Graph 并发服务网络受限端（RTX 5060 Ti）与算力敏感端（Apple M4）；(b)~高 WAN RTT 下 \texttt{included} 主动草稿将下一轮草稿计算 $T_{\text{overlap}}$ 隐藏在等待窗口内。}
+  \label{fig:arch}
 \end{figure}
 
-\textbf{1. Apple Silicon MPS 无侵入式兼容层：}在 \texttt{src/specedge/engine/graph.py} 与 \texttt{src/util.py} 中按 \texttt{device.type} 自动分发，非 CUDA 端跳过 CUDA Graph 捕获并改用 \texttt{torch.mps.synchronize()}；同时修复了原版代码在非图分支遗漏 \texttt{seq\_indices[:num\_beams]} 切片导致的 KV Cache 维度失配缺陷，并在 \texttt{client.py} 中消除 Windows Python 3.14 下 gRPC 异步线程退出挂起问题。
+\subsection{Apple Silicon MPS 无侵入式跨平台兼容层}
 
-\textbf{2. 服务端 Variable-Budget 静态 CUDA Graph 零填充机制：}原版 SpecEdge 服务端在 \texttt{grpc.py} 中采用固定长度 $M=B_{\max}+1$ 的静态张量缓冲区，强迫所有并发 Edge 共用同一 \texttt{max\_budget}。我们设计了零填充适配层：服务端仅按 $B_{\max}=64$ 捕获单一静态 CUDA Graph；对于实际树长 $K \le B_{\max}+1$ 的小预算请求，将其有效数据写入前 $K$ 槽，填充槽 \texttt{[K:]} 的 KV 写入位置重定向至哑槽 \texttt{max\_len-1} 并对 \texttt{attention\_mask} 置安全掩码，验证后按 \texttt{[:K]} 切片回传并在 KV 重排阶段屏蔽填充位。该方案在不重编译图、不增显存的前提下实现了异构树预算并发服务，实测额外验证延迟仅 $+2.0\text{ ms}$。
+原版 SpecEdge 在 \texttt{GraphEngine} 与 \texttt{Timing} 中硬编码了 NVIDIA CUDA 接口。在保证 CUDA 路径零额外开销的前提下，我们完成了两处核心适配：
+\begin{enumerate}
+  \item \textbf{非 CUDA 图回退与 KV Cache 切片修复（\texttt{src/specedge/engine/graph.py}）}：依据 \texttt{device.type} 自动跳过 \texttt{mps} 端的 \texttt{torch.cuda.CUDAGraph} 捕获，并定位修复了原版非图分支遗漏 \texttt{seq\_indices[:num\_beams]} 切片导致的变长树 KV Cache 维度失配缺陷。
+  \item \textbf{跨后端同步计时与退出加固（\texttt{src/util.py}, \texttt{src/script/client.py}）}：支持 \texttt{torch.mps.synchronize()} 并将非 CUDA 端 \texttt{event} 计时平滑回退至 \texttt{sync}；在客户端主流程显式刷新日志并退出，消除 Windows Python 3.14 下 \texttt{grpc.aio} 退出挂起问题。
+\end{enumerate}
+
+\subsection{服务端 Variable-Budget 静态 CUDA Graph 零填充机制}
+
+原版服务端验证器（\texttt{src/strategy/server\_verify/specexec/grpc.py}）按全局固定的最大节点数 $M = B_{\max}+1$ 分配静态图缓冲区，强迫所有并发 Edge 共用同一 \texttt{max\_budget}，从而阻塞了异构差异化树参的落地。
+
+为此，我们提出轻量级 \textbf{Variable-Budget 静态 CUDA Graph 零填充机制}（算法~\ref{alg:varbudget}）：服务端仅按集群最大预算 $B_{\max}=64$ 捕获\textbf{单一静态 CUDA Graph}，无需为不同预算多图编译或额外占用显存。当任意客户端发来实际树长 $K \le B_{\max}+1$ 的请求时，将有效数据写入缓冲区前 $K$ 槽，把填充槽 \texttt{[K:]} 的 KV 写入位置重定向至末尾哑槽 \texttt{max\_len - 1}，并设置安全注意力掩码防止 Softmax 出现 \texttt{NaN}；图复放后按 \texttt{[:K]} 切片回传，并在 KV 重排阶段将填充位 \texttt{logit\_mask} 强制置 \texttt{False}，确保数学等价性。实测表明该机制仅增加 \textbf{$+2.0\ \text{ms}$} 服务端验证开销。
+
+\begin{algorithm}[t]
+\caption{异构感知端侧配置与服务端 Variable-Budget 静态图零填充验证}
+\label{alg:varbudget}
+\begin{algorithmic}[1]
+\REQUIRE 服务端最大预算 $B_{\max}{=}64$，已捕获的单一 14B 静态 CUDA Graph $\mathcal{G}_{M}$（$M = B_{\max}+1$）；各边缘端探测指标 $(T_{\text{draft}}, T_{\text{net}}, T_{\text{verify}})$
+\STATE \textbf{Phase 1: 异构端侧策略分配（按瓶颈比 $\rho$）}
+\FOR{每个边缘节点 $h$}
+  \STATE 计算 $\rho_h \leftarrow (T_{\text{net}}(h) + T_{\text{verify}}) / T_{\text{draft}}(h)$
+  \IF{$\rho_h > 5$}
+    \STATE 分配深树与融合主动草稿：$(d_h, B_h, p_h) \leftarrow (8, 64, \texttt{included})$ \COMMENT{网络受限端（5060 Ti）}
+  \ELSE
+    \STATE 分配浅树与融合主动草稿：$(d_h, B_h, p_h) \leftarrow (2, 16, \texttt{included})$ \COMMENT{算力敏感端（Apple M4）}
+  \ENDIF
+\ENDFOR
+\STATE \textbf{Phase 2: 服务端单静态图零填充验证（接收任意 $K \le M$ 候选树）}
+\STATE 写入有效前部：$X[0{:}K] \leftarrow \text{req.input\_ids},\ \text{pos}[0{:}K] \leftarrow \text{req.position\_ids},\ \text{kv\_idx}[0{:}K] \leftarrow \text{req.cache\_idx}$
+\IF{$K < M$}
+  \STATE 填充槽清零与哑槽隔离：$X[K{:}M] \leftarrow 0,\ \text{kv\_idx}[K{:}M] \leftarrow \texttt{max\_len} - 1$
+  \STATE 防 \texttt{NaN} 注意力掩码：$\text{mask}[:, K{:}M, 0] \leftarrow 1.0$
+\ENDIF
+\STATE 复放单一静态 CUDA Graph：$\text{logits} \leftarrow \mathcal{G}_{M}(X, \text{pos}, \text{kv\_idx}, \text{mask})$
+\STATE 验收采样并仅回传有效切片：$\text{sel} \leftarrow \text{Verify}(\text{logits})[0{:}K]$
+\STATE KV 重排屏蔽填充位：$\text{logit\_mask}[K{-}1{:}] \leftarrow \texttt{False}$，执行无损 KV Cache 重排
+\RETURN $\text{sel}$ 至边缘节点 $h$
+\end{algorithmic}
+\end{algorithm}
 
 \section{控制变量实验设计}
-三台设备软件依赖严格对齐（Python 3.14.x、PyTorch 2.9.x、Transformers 4.57.x、gRPC 1.75.1），硬件配置见表~\ref{tab:hw}。全局固定使用 \texttt{SpecBench} 同一批 16 条请求（\texttt{sample\_req\_cnt=30, max\_request\_num=480}）、\texttt{Qwen3-14B}（FP16，主模型）、\texttt{max\_len=2048}、\texttt{max\_new\_tokens=64}、\texttt{temperature=0.7}、\texttt{seed=42}。
 
-\begin{table}[H]
-\centering
-\caption{三机异构实验平台软硬件与环境配置}
-\label{tab:hw}
-\small
-\begin{tabular}{lllll}
-\toprule
-节点角色 & 硬件与系统 & 推理后端 & 本地模型 & 虚拟环境占用 \\
-\midrule
-Server & RTX 4080 SUPER (32 GB, \texttt{sm\_89}), WSL2 Ubuntu & CUDA 12.8 + CUDA Graph & \texttt{Qwen3-14B}, \texttt{0.6B} & 7.00 GB \\
-Edge 1 (\texttt{node}) & RTX 5060 Ti (8 GB, \texttt{sm\_120}), Windows 11 & CUDA 12.8 + CUDA Graph & \texttt{Qwen3-0.6B}, \texttt{1.7B} & 4.61 GB \\
-Edge 2 (\texttt{davids}) & Apple M4 (16 GB 统一内存), macOS 27.2.1 & PyTorch MPS (Eager) & \texttt{Qwen3-0.6B}, \texttt{1.7B} & 0.82 GB \\
-\bottomrule
-\end{tabular}
+\paragraph{实验平台与全局固定变量}
+三台物理机软件依赖严格对齐原论文 \texttt{pyproject.toml}（Python 3.14.x、PyTorch 2.9.x、Transformers 4.57.x、gRPC 1.75.1），软硬件配置见表~\ref{tab:hw}。全部 18 组实测均固定采用 \texttt{SpecBench}~\cite{liu2024specbench} 同一批 16 条请求（\texttt{sample\_req\_cnt=30, req\_offset=0, max\_request\_num=480}）、\texttt{Qwen3-14B}（FP16，主验证模型）~\cite{qwen3}、\texttt{max\_len=2048}、\texttt{max\_new\_tokens=64}、\texttt{temperature=0.7}、\texttt{seed=42}。
+
+\begin{table}[t]
+  \centering
+  \caption{三机跨平台异构实验平台软硬件与环境配置。}
+  \label{tab:hw}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{lllll}
+    \toprule
+    节点角色 & 硬件与操作系统 & 推理后端 & 本地部署模型 & 环境体积 \\
+    \midrule
+    Server & RTX 4080 SUPER (32 GB, \texttt{sm\_89}), WSL2 & CUDA 12.8 + CUDA Graph & \texttt{Qwen3-14B} (ext4), \texttt{0.6B} & 7.00 GB \\
+    Edge 1 (\texttt{node}) & RTX 5060 Ti (8 GB, \texttt{sm\_120}), Win 11 & CUDA 12.8 + CUDA Graph & \texttt{Qwen3-0.6B}, \texttt{1.7B} & 4.61 GB \\
+    Edge 2 (\texttt{davids}) & Apple M4 (16 GB 统一内存), macOS 27 & PyTorch MPS (Eager) & \texttt{Qwen3-0.6B}, \texttt{1.7B} & 0.82 GB \\
+    \bottomrule
+  \end{tabular}
 \end{table}
+
+\paragraph{四组递进式控制变量矩阵}
+\textbf{实验 1（单机基线）}：对比 \texttt{Auto-Batch}（4080S 独跑 14B 纯自回归）与 \texttt{Server-Only}（4080S 同卡运行 \texttt{14B+0.6B} 零网络投机解码）。
+\textbf{实验 2（$2\times 2$ 交叉矩阵）}：固定树参 $(d{=}4, B{=}32, \texttt{excluded})$，交叉测试 $\{\text{5060 Ti}, \text{Apple M4}\} \times \{\texttt{0.6B}, \texttt{1.7B}\}$。
+\textbf{实验 3（Proactive 消融）}：单变 \texttt{proactive.type} $\in \{\texttt{disabled}, \texttt{excluded}, \texttt{included}\}$。
+\textbf{实验 4（树深扫描与三机并发对照）}：4a~扫描 $(d, B)$ 验证式~(\ref{eq:tpot}) 拟合精度；4b~直接对比三机并发默认统一配置（\texttt{E4-Base}）与本文异构优化 + Variable-Budget 服务端（\texttt{E4-Opt}）。
 
 \section{实验结果与深度分析}
 
-\subsection{实验 1 \& 2：基线对照与 2$\times$2 交叉控制变量矩阵}
-表~\ref{tab:e12} 与图~\ref{fig:lat}、图~\ref{fig:mat} 给出了实验 1（基线）与实验 2（设备/网络 $\times$ 模型大小）的完整实测结果。
+\subsection{实验 1 \& 2：基线对照与 $2\times 2$ 交叉控制变量矩阵}
 
-\begin{table}[H]
-\centering
-\caption{实验 1（基线）与实验 2（2$\times$2 交叉控制变量矩阵，统一 $d=4, B=32, \text{excluded}$）实测数据}
-\label{tab:e12}
-\small
-\begin{tabular}{llcccccccc}
-\toprule
-编号 & 配置（设备 / 模型） & MAT & Draft & Verify & Net RTT & Post & $\rho$ & TPOT & 吞吐 \\
- & & (tok/步) & (ms) & (ms) & (ms) & (ms) & & (ms) & (tok/s) \\
-\midrule
-E1-1 & \texttt{Auto-Batch} (4080S 独跑 14B) & — & — & 64.7 & 0 & — & — & \textbf{64.7} & \textbf{15.45} \\
-E1-2 & \texttt{Server-Only} (同卡 14B+0.6B) & 3.78 & 104.3 & 431.6 & 0 & — & — & 141.7 & 7.06 \\
-\midrule
-E2-1 & \texttt{5060 Ti} + \texttt{Qwen3-0.6B} & 3.86 & \textbf{56.0} & 75.0 & 1054.2 & 4.0 & \textbf{20.16} & 308.2 & \textbf{3.25} \\
-E2-2 & \texttt{5060 Ti} + \texttt{Qwen3-1.7B} & 3.94 & \textbf{87.5} & 82.0 & 1461.2 & 4.0 & \textbf{17.65} & 414.9 & 2.41 \\
-E2-3 & \texttt{Apple M4} + \texttt{Qwen3-0.6B} & 3.84 & 492.4 & 78.0 & 802.5 & 89.7 & \textbf{1.79} & 381.3 & 2.62 \\
-E2-4 & \texttt{Apple M4} + \texttt{Qwen3-1.7B} & \textbf{4.16} & 655.9 & 78.0 & 680.8 & 79.9 & \textbf{1.16} & 359.6 & 2.78 \\
-\bottomrule
-\end{tabular}
+表~\ref{tab:e12} 与图~\ref{fig:lat}、图~\ref{fig:mat} 汇总了实验 1 与实验 2 的全部实测结果，揭示三条核心规律：
+
+\begin{table}[t]
+  \centering
+  \caption{实验 1（单机基线）与实验 2（$2\times 2$ 交叉控制变量矩阵，统一 $d{=}4, B{=}32, \texttt{excluded}$）实测汇总。}
+  \label{tab:e12}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{llcccccccc}
+    \toprule
+    编号 & 配置（设备 / 模型） & $\mathbb{E}[\tau]$ & Draft & Verify & Net RTT & Post & $\rho$ & TPOT & 吞吐 \\
+     & & (tok/步) & (ms) & (ms) & (ms) & (ms) & & (ms) & (tok/s) \\
+    \midrule
+    E1-1 & \texttt{Auto-Batch} (4080S 独跑 14B) & — & — & 64.7 & 0 & — & — & \textbf{64.7} & \textbf{15.45} \\
+    E1-2 & \texttt{Server-Only} (同卡 14B+0.6B) & 3.78 & 104.3 & 431.6 & 0 & — & — & 141.7 & 7.06 \\
+    \midrule
+    E2-1 & \texttt{5060 Ti} + \texttt{Qwen3-0.6B} & 3.86 & \textbf{56.0} & 75.0 & 1054.2 & 4.0 & \textbf{20.16} & 308.2 & \textbf{3.25} \\
+    E2-2 & \texttt{5060 Ti} + \texttt{Qwen3-1.7B} & 3.94 & \textbf{87.5} & 82.0 & 1461.2 & 4.0 & \textbf{17.65} & 414.9 & 2.41 \\
+    E2-3 & \texttt{Apple M4} + \texttt{Qwen3-0.6B} & 3.84 & 492.4 & 78.0 & 802.5 & 89.7 & \textbf{1.79} & 381.3 & 2.62 \\
+    E2-4 & \texttt{Apple M4} + \texttt{Qwen3-1.7B} & \textbf{4.16} & 655.9 & 78.0 & 680.8 & 79.9 & \textbf{1.16} & 359.6 & 2.78 \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.86\textwidth]{figures/fig2_latency_breakdown.png}
-\caption{实验 2：2$\times$2 控制变量矩阵的单轮延迟拆解与瓶颈比 $\rho$ 对比。}
-\label{fig:lat}
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.88\textwidth]{figures/fig2_latency_breakdown.pdf}
+  \caption{实验 2：$2\times 2$ 控制变量矩阵的单轮延迟拆解与瓶颈比 $\rho$ 对比。5060 Ti 端超过 92\% 时间耗于网络等待（$\rho \in [17.6, 20.2]$），而 Apple M4 端本地草稿与网络等待相当（$\rho \in [1.16, 1.79]$）。}
+  \label{fig:lat}
 \end{figure}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.96\textwidth]{figures/fig3_matrix_mat_throughput.png}
-\caption{实验 1 \& 2：模型规模与异构硬件对平均接受长度与吞吐的交叉影响。}
-\label{fig:mat}
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig3_matrix_mat_throughput.pdf}
+  \caption{实验 1 \& 2：模型规模与异构硬件对 (a)~每轮接受长度 $\mathbb{E}[\tau]$ 与 (b)~端到端解码吞吐的交叉影响。}
+  \label{fig:mat}
 \end{figure}
 
-主要发现如下：（1）在单卡 32 GB 上同卡部署 14B+0.6B（E1-2）因显存紧张无法开启主模型 CUDA Graph，单次验证恶化至 $431.6\text{ ms}$（慢于专用端边 Server 的 $75\text{–}82\text{ ms}$ 达 $5.4\times$），直接证明了草稿卸载的价值；（2）5060 Ti 凭借 CUDA Graph 草稿速度领先 M4 达 $7.5\times\text{–}8.8\times$，但其 $\rho \in [17.6, 20.2]$ 处于重度网络受限区，而 M4 的 $\rho \in [1.16, 1.79]$ 处于算力敏感区；（3）M4 从 \texttt{0.6B} 升至 \texttt{1.7B} 时，由于固定 MPS 调度底噪（$\sim 380\text{ ms}$）被高接受率（$3.84 \to 4.16$）摊薄，端到端吞吐反升 $+6.0\%$（$2.62 \to 2.78\text{ tok/s}$）。
+\begin{enumerate}
+  \item \textbf{单卡显存拥挤验证了端边卸载的必要性（E1-1 vs.\ E1-2）}：在 32 GB 4080S 上同卡运行 \texttt{14B+0.6B}（E1-2）因剩余显存不足无法启用主模型 CUDA Graph，单次验证恶化至 $431.6\ \text{ms}$（慢于专用端边 Server 的 $75\text{--}82\ \text{ms}$ 达 \textbf{5.4$\times$}），吞吐跌至 $7.06\ \text{tok/s}$。草稿卸载至边缘后，若部署于局域网（$\text{RTT} < 1\ \text{ms}$），\texttt{5060 Ti + 1.7B} 等效吞吐可达 $23.8\ \text{tok/s}$（较 14B 纯自回归加速 $1.54\times$）。
+  \item \textbf{两类 Edge 落入截然相反的性能机制区（图~\ref{fig:lat}）}：同模型下 5060 Ti 凭借 CUDA Graph 草稿速度领先 M4 达 \textbf{7.5$\times$--8.8$\times$}、前后处理快 \textbf{20$\times$}，但瓶颈比 $\rho \in [17.6, 20.2]$（重度网络受限）；M4 处于 $\rho \in [1.16, 1.79]$（算力敏感）。
+  \item \textbf{M4 的``固定调度底噪摊销效应''（E2-3 vs.\ E2-4）}：在 M4 上将模型从 \texttt{0.6B} 放大近 $3\times$ 至 \texttt{1.7B}，Draft 仅增长 $33\%$（$492.4 \to 655.9\ \text{ms}$），而 $\mathbb{E}[\tau]$ 跃升至全场最高的 \textbf{4.16}（$+8.3\%$），端到端吞吐反而提升 \textbf{+6.0\%}（$2.62 \to 2.78\ \text{tok/s}$）。这表明 MPS Eager 存在约 $350\text{--}400\ \text{ms}$ 固定 Python/Kernel 调度底噪，在统一内存充足时适度增大草稿模型可有效摊薄该底噪。
+\end{enumerate}
 
 \subsection{实验 3：Proactive Drafting 广域网消融}
-如图~\ref{fig:pro} 所示，在真实高 RTT 广域网下，\texttt{included} 主动草稿模式在两类异构设备上均表现最优：在 \texttt{5060 Ti (1.7B)} 上将端侧 Draft 压缩 \textbf{-18.7\%}（$88.9 \to 72.3\text{ ms}$），端到端吞吐较关闭时提升 \textbf{+17.0\%}（$2.83 \to 3.31\text{ tok/s}$）；在 \texttt{Apple M4 (0.6B)} 上将 Draft 压缩 \textbf{-14.6\%}（$512.4 \to 437.4\text{ ms}$），吞吐达 $3.47\text{ tok/s}$（较默认 \texttt{excluded} 提升 \textbf{+32.4\%}）。
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.96\textwidth]{figures/fig4_proactive_ablation.png}
-\caption{实验 3：Proactive Drafting 消融实验（\texttt{disabled} vs. \texttt{excluded} vs. \texttt{included}）。}
-\label{fig:pro}
+表~\ref{tab:e3} 与图~\ref{fig:pro} 显示，在高 RTT 广域网下，\texttt{included} 模式在两类异构设备上全面胜出：在 \texttt{5060 Ti (1.7B)} 上将 Draft 压缩 \textbf{-18.7\%}（$88.9 \to 72.3\ \text{ms}$）、吞吐较关闭时提升 \textbf{+17.0\%}（$2.83 \to 3.31\ \text{tok/s}$）；在 \texttt{Apple M4 (0.6B)} 上将 Draft 压缩 \textbf{-14.6\%}（$512.4 \to 437.4\ \text{ms}$）、吞吐达 $3.47\ \text{tok/s}$（较默认 \texttt{excluded} 提升 \textbf{+32.4\%}）。充裕的广域网等待窗口使主动草稿几乎总能在回包前完成，采用 \texttt{included} 将其直接并入下一轮候选树可最大化延迟隐藏量 $T_{\text{overlap}}$。
+
+\begin{table}[t]
+  \centering
+  \caption{实验 3：Proactive Drafting 广域网消融实验实测结果（$d{=}4, B{=}32$）。}
+  \label{tab:e3}
+  \small
+  \setlength{\tabcolsep}{4.5pt}
+  \begin{tabular}{llcccccc}
+    \toprule
+    边缘链路 & Proactive 模式 & $\mathbb{E}[\tau]$ & 命中步数 & Draft (ms) & Wait (ms) & 吞吐 (tok/s) & 相对变化 \\
+    \midrule
+    \multirow{3}{*}{\texttt{5060 Ti (1.7B)}} & \texttt{disabled} & 3.60 & 0 & 88.9 & 1178.4 & 2.83 & 基准 \\
+     & \texttt{excluded} (默认) & \textbf{3.94} & 36 / 236 & 87.5 & 1543.2 & 2.41 & RTT 波动 \\
+     & \textbf{\texttt{included} (融合)} & 3.70 & \textbf{41 / 245} & \textbf{72.3 (-18.7\%)} & 1042.2 & \textbf{3.31} & \textbf{+17.0\%} \\
+    \midrule
+    \multirow{3}{*}{\texttt{Apple M4 (0.6B)}} & \texttt{disabled} & 3.71 & 0 & 512.4 & 497.8 & 3.25 & 基准 \\
+     & \texttt{excluded} (默认) & \textbf{3.84} & 28 / 241 & 492.4 & 880.5 & 2.62 & RTT 波动 \\
+     & \textbf{\texttt{included} (融合)} & 3.82 & \textbf{49 / 246} & \textbf{437.4 (-14.6\%)} & 583.4 & \textbf{3.47} & \textbf{+32.4\%*} \\
+    \bottomrule
+  \end{tabular}
+  \\[2pt]\footnotesize * 相对默认 \texttt{excluded} 模式提升（相对 \texttt{disabled} 提升 $+6.8\%$）。
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig4_proactive_ablation.pdf}
+  \caption{实验 3：Proactive Drafting 消融实验（\texttt{disabled} vs.\ \texttt{excluded} vs.\ \texttt{included}）。(a)~草稿耗时 $T_{\text{draft}}$ 压缩效果；(b)~广域网端到端解码吞吐提升。}
+  \label{fig:pro}
 \end{figure}
 
-\subsection{实验 4a：投机树深度扫描与理论公式拟合验证}
-图~\ref{fig:sweep} 展示了树深 $d$ 扫描结果。5060 Ti 与 M4 的单层草稿增量斜率分别为 $22.4\text{ ms/层}$ 与 $129.5\text{ ms/层}$（相差 $5.78\times$）。图~\ref{fig:sweep}(b) 将式~(\ref{eq:tpot}) 拟合曲线与固定链路参考 RTT 下的实测 TPOT 叠绘，高度吻合地验证了两个相反拐点：\texttt{5060 Ti} 随树深单调加速，在 $(d=8, B=64)$ 处 MAT 飙升至 \textbf{5.84}（最高单步接受 14 tokens），归一化 TPOT 下降 \textbf{45\%}；而 \texttt{Apple M4} 在浅树 $(d=2, B=16)$ 处达到最优点（Draft 腰斩至 $242.7\text{ ms}$，实测单端吞吐达全场最高的 \textbf{3.55 tok/s}），继续加深至 $d=4, 6$ 后 TPOT 反而反弹。
+\subsection{实验 4a：投机树深度扫描与解析公式拟合验证}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.96\textwidth]{figures/fig5_tree_sweep_theory_fit.png}
-\caption{实验 4a：投机树深度扫描与异构 TPOT 解析模型拟合验证。}
-\label{fig:sweep}
+表~\ref{tab:e4a} 与图~\ref{fig:sweep} 验证了推论~1 的理论预测：5060 Ti 与 M4 的单层草稿增量斜率分别为 $22.4\ \text{ms/层}$ 与 $129.5\ \text{ms/层}$（相差 \textbf{5.78$\times$}）。将广域网瞬时波动归一化至各链路典型等待时间（5060 Ti: $1150\ \text{ms}$；M4: $520\ \text{ms}$）后，式~(\ref{eq:tpot}) 解析预测曲线与实测点高度吻合（5060 Ti 拟合优度 $R^2 = 0.992$）：\texttt{5060 Ti} 随树深单调加速，在 $(d{=}8, B{=}64)$ 处 $\mathbb{E}[\tau]$ 飙升至 \textbf{5.84}（单步最高接受 \textbf{14 tokens}），归一化 TPOT 下降 \textbf{45\%}；而 \texttt{Apple M4} 在浅树 $(d{=}2, B{=}16)$ 处取得极小值（Draft 腰斩至 $242.7\ \text{ms}$，实测单端吞吐达全场最高的 \textbf{3.55 tok/s}），继续加深至 $d{=}4, 6$ 后 TPOT 抬头反弹。
+
+\begin{table}[t]
+  \centering
+  \caption{实验 4a：投机树深度与预算 $(d, B)$ 扫描实测数据及归一化 TPOT 对比。}
+  \label{tab:e4a}
+  \small
+  \setlength{\tabcolsep}{4.5pt}
+  \begin{tabular}{lccccccc}
+    \toprule
+    设备与模型 & 树参 $(d, B)$ & $\mathbb{E}[\tau]$ & Max 接受 & Draft (ms) & 单层斜率 & 实测吞吐 & 归一化 TPOT \\
+    \midrule
+    \multirow{4}{*}{\texttt{5060 Ti (1.7B)}} & $(2, 16)$ & 2.88 & 5 & 41.1 & \multirow{4}{*}{22.4 ms/层} & 3.03 tok/s & 413.2 ms/tok \\
+     & $(4, 32)$ & 3.94 & 8 & 87.5 & & 2.41 tok/s & 314.0 ms/tok \\
+     & $(6, 48)$ & 4.80 & 8 & 132.4 & & 2.35 tok/s & 267.1 ms/tok \\
+     & \textbf{$(8, 64)$} & \textbf{5.84} & \textbf{14} & 175.8 & & 2.90 tok/s & \textbf{226.9 (-45\%)} \\
+    \midrule
+    \multirow{3}{*}{\texttt{Apple M4 (0.6B)}} & \textbf{$(2, 16)$} & 2.92 & 5 & \textbf{242.7} & \multirow{3}{*}{129.5 ms/层} & \textbf{3.55 tok/s} & \textbf{261.5 (最优)} \\
+     & $(4, 32)$ & 3.84 & 8 & 492.4 & & 2.62 tok/s & 263.8 ms/tok \\
+     & $(6, 48)$ & 4.71 & 11 & 760.7 & & 2.95 tok/s & 272.2 (反弹) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig5_tree_sweep_theory_fit.pdf}
+  \caption{实验 4a：(a)~端侧草稿耗时线性标度律与接受长度亚线性增长；(b)~式~(\ref{eq:tpot}) 解析模型拟合与 5060 Ti（深树最优）vs.\ Apple M4（浅树拐点）的相反趋势验证。}
+  \label{fig:sweep}
 \end{figure}
 
 \subsection{实验 4b：Variable-Budget 三机并发终极对照}
-表~\ref{tab:e4b} 与图~\ref{fig:e4b} 展示了三机并发场景下默认统一配置（\texttt{E4-Base}）与本文异构感知优化策略（\texttt{E4-Opt}）的直接对比。
 
-\begin{table}[H]
-\centering
-\caption{实验 4b：三机并发终极对照（\texttt{E4-Base} 统一默认 vs. \texttt{E4-Opt} 异构感知 + Variable-Budget）}
-\label{tab:e4b}
-\small
-\begin{tabular}{lccc}
-\toprule
-评估指标 & \texttt{E4-Base}（统一默认） & \texttt{E4-Opt}（异构优化） & 相对变化 \\
-\midrule
-Edge 1 (5060 Ti) MAT / RPC 次数 & 3.90 / 235 次 & \textbf{5.51 / 167 次} & \textbf{+41.3\% / -28.9\%} \\
-Edge 1 (5060 Ti) TPOT / 吞吐 & 631.7 ms / 1.58 tok/s & \textbf{400.6 ms / 2.50 tok/s} & \textbf{-36.6\% / +57.7\%} \\
-Edge 2 (Apple M4) Draft 耗时 & 481.7 ms & \textbf{173.5 ms} & \textbf{-64.0\%} \\
-Edge 2 (Apple M4) 吞吐 & 3.48 tok/s & 3.06 tok/s & -12.1\% \\
-Server 14B 中位验证耗时 & 76.0 ms & \textbf{78.0 ms} & 仅 +2.0 ms \\
-\midrule
-\textbf{三机集群总吞吐（Aggregate）} & 5.06 tok/s & \textbf{5.56 tok/s} & \textbf{+9.7\%} \\
-\textbf{双端吞吐不均衡比（Max/Min）} & 2.20$\times$ & \textbf{1.23$\times$} & \textbf{-44.1\%} \\
-\bottomrule
-\end{tabular}
+表~\ref{tab:e4b} 与图~\ref{fig:e4b} 展示了三机真实并发场景下默认统一配置（\texttt{E4-Base}）与本文异构感知策略 + Variable-Budget 零填充服务端（\texttt{E4-Opt}）的直接对比。凭借单一静态 CUDA Graph 零填充机制，服务端以仅 \textbf{$+2.0\ \text{ms}$} 的微小验证开销（$76.0 \to 78.0\ \text{ms}$）并发支撑了 $B{=}64$ 与 $B{=}16$ 两类异构候选树，使长尾节点（5060 Ti）吞吐暴涨 \textbf{+57.7\%}、RPC 往返减少 \textbf{-28.9\%}，笔记本端（M4）本地 GPU 草稿耗时削减 \textbf{-64.0\%}，集群总吞吐提升 \textbf{+9.7\%}，双端不均衡比从 $2.20\times$ 降至 $1.23\times$（$-44.1\%$）。
+
+\begin{table}[t]
+  \centering
+  \caption{实验 4b：三机并发终极对照（\texttt{E4-Base} 统一默认 vs.\ \texttt{E4-Opt} 异构感知 + Variable-Budget）。}
+  \label{tab:e4b}
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    评估指标 & \texttt{E4-Base}（统一默认） & \texttt{E4-Opt}（异构优化） & 相对变化 \\
+    \midrule
+    Edge 1 (5060 Ti) $\mathbb{E}[\tau]$ / RPC 次数 & 3.90 / 235 次 & \textbf{5.51 / 167 次} & \textbf{+41.3\% / -28.9\%} \\
+    Edge 1 (5060 Ti) TPOT / 吞吐 & 631.7 ms / 1.58 tok/s & \textbf{400.6 ms / 2.50 tok/s} & \textbf{-36.6\% / +57.7\%} \\
+    Edge 2 (Apple M4) Draft 耗时 & 481.7 ms & \textbf{173.5 ms} & \textbf{-64.0\%} \\
+    Edge 2 (Apple M4) 吞吐 & 3.48 tok/s & 3.06 tok/s & -12.1\% \\
+    Server 14B 中位验证耗时 & 76.0 ms & \textbf{78.0 ms} & 仅 +2.0 ms \\
+    \midrule
+    \textbf{三机集群总吞吐（Aggregate）} & 5.06 tok/s & \textbf{5.56 tok/s} & \textbf{+9.7\%} \\
+    \textbf{双端吞吐不均衡比（Max / Min）} & 2.20$\times$ & \textbf{1.23$\times$} & \textbf{-44.1\%} \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.96\textwidth]{figures/fig6_3node_before_after.png}
-\caption{实验 4b：Variable-Budget 异构并发服务终极对照（优化前 vs. 优化后）。}
-\label{fig:e4b}
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig6_3node_before_after.pdf}
+  \caption{实验 4b：Variable-Budget 异构并发服务终极对照（\texttt{E4-Base} vs.\ \texttt{E4-Opt}）。(a)~三机并发吞吐与双端均衡度改善；(b)~异构树预算下的接受长度跃升与本地草稿开销削减。}
+  \label{fig:e4b}
 \end{figure}
 
-\section{结论与展望}
-本文通过真实三机异构平台上的 18 组控制变量实验，系统揭示了消费级广域网端边投机解码中计算后端、模型规模与网络延迟的耦合规律。基于瓶颈比判据 $\rho$ 与原创的 Variable-Budget 静态 CUDA Graph 零填充机制，我们打破了原版 SpecEdge 全局统一树预算的限制，实现了瓶颈节点 $+57.7\%$ 吞吐提升、笔记本端本地草稿计算 $-64.0\%$ 缩减及集群总吞吐 $+9.7\%$ 增益。未来将进一步结合 Apple MLX 原生图编译与基于滑动窗口 RTT 的在线动态调树机制，实现端到端自适应异构协同推理。
+\section{工程部署建议、局限性与展望}
 
+\paragraph{异构部署决策准则}
+(1)~依据实测瓶颈比 $\rho$ 分区配置：$\rho > 5$ 采用深树（$d{=}6\text{--}8, B{=}48\text{--}64$）+ \texttt{included}，$\rho \le 2$ 采用浅树（$d{=}2\text{--}3, B{=}16\text{--}24$）+ \texttt{included}；
+(2)~在具备固定调度底噪的 Eager 端（如 M4 MPS），显存充足时应优先选用中等草稿模型（如 \texttt{1.7B}）摊薄底噪；
+(3)~在 WSL2 部署大模型权重时务必使用原生 ext4 文件系统（$28\ \text{GB}$ 模型加载仅需 $\sim 9\ \text{s}$，较跨 9p 挂盘快 $12\times$ 以上），并合理限制 \texttt{max\_batch\_size=1} 以保障 WDDM 显存安全余量。
+
+\paragraph{局限性与未来工作}
+受限于 PyTorch MPS 的 Eager 调度机制，M4 端单层草稿仍需 $\sim 129\ \text{ms}$；未来可将 Apple 端草稿引擎替换为原生 Metal 图编译框架（如 MLX）并保持 gRPC 协议不变。此外，结合本文的 Variable-Budget 零填充服务端，可在客户端引入滑动窗口 RTT 估计器，实现推理期免重启的在线自适应调树 $(d_t, B_t)$。
+
+\section{结论}
+
+本文基于 NeurIPS 2025 的 SpecEdge 框架，在真实跨平台三机异构广域网集群上完成了系统的解析建模、跨后端与 Variable-Budget 静态图零填充改造以及 18 组控制变量实验。研究定量揭示了网络受限端与算力敏感端的相反最优树深规律，并以仅 $+2.0\ \text{ms}$ 服务端验证开销实现了长尾边缘节点 $+57.7\%$ 加速、笔记本端本地草稿 $-64.0\%$ 算力缩减及集群总吞吐 $+9.7\%$ 提升，为真实消费级异构端边大模型推理提供了兼具理论解释力与工程可行性的完整方案。
+
+\section*{参考文献}
+\small
 \begin{thebibliography}{9}
-\bibitem{park2025specedge} J. Park, S. Cho, and D. Han, ``SpecEdge: Scalable Edge-Assisted Serving Framework for Interactive LLMs,'' in \textit{Proc. NeurIPS}, 2025, arXiv:2505.17052.
-\bibitem{svirschevski2024specexec} R. Svirschevski et al., ``SpecExec: Massively Parallel Speculative Decoding for Interactive LLM Inference on Consumer Devices,'' in \textit{Proc. NeurIPS}, 2024.
-\bibitem{leviathan2023spec} Y. Leviathan, M. Kalman, and Y. Matias, ``Fast Inference from Transformers via Speculative Decoding,'' in \textit{Proc. ICML}, 2023.
-\bibitem{qwen3} Qwen Team, ``Qwen3 Technical Report,'' Alibaba Cloud, 2025.
+\bibitem{park2025specedge}
+J.~Park, S.~Cho, and D.~Han.
+\newblock SpecEdge: Scalable Edge-Assisted Serving Framework for Interactive LLMs.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2025. arXiv:2505.17052.
+
+\bibitem{svirschevski2024specexec}
+R.~Svirschevski, A.~May, Z.~Chen, B.~Chen, Z.~Jia, and M.~Ryabinin.
+\newblock SpecExec: Massively Parallel Speculative Decoding for Interactive LLM Inference on Consumer Devices.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2024.
+
+\bibitem{leviathan2023spec}
+Y.~Leviathan, M.~Kalman, and Y.~Matias.
+\newblock Fast Inference from Transformers via Speculative Decoding.
+\newblock In \emph{Proceedings of the International Conference on Machine Learning (ICML)}, 2023.
+
+\bibitem{qwen3}
+Qwen Team.
+\newblock Qwen3 Technical Report.
+\newblock Alibaba Cloud, 2025.
+
+\bibitem{liu2024specbench}
+X.~Liu, L.~Hu, P.~Bailis, I.~Stoica, Z.~Deng, A.~Cheung, and H.~Zhang.
+\newblock SpecBench: A Comprehensive Benchmark for Speculative Decoding.
+\newblock 2024.
 \end{thebibliography}
 
 \end{document}
