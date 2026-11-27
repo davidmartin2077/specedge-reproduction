@@ -328,16 +328,16 @@ def plot_fig2_latency_breakdown(s: dict):
                     color="white", fontsize=8.5, fontweight="bold")
 
     ax.set_ylabel("单轮验证周期平均耗时 (ms)", fontsize=10.5)
-    ax.set_title("实验 2：2×2 控制变量矩阵的单轮延迟拆解与瓶颈比 ρ 对比", fontsize=12, fontweight="bold", pad=32)
+    ax.set_title("实验 2：2×2 控制变量矩阵的单轮延迟拆解与瓶颈比 ρ 对比", fontsize=12, fontweight="bold", pad=12)
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=10)
-    ax.set_ylim(0, max(totals) * 1.24)
+    ax.set_ylim(0, max(totals) * 1.42)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.legend(
-        frameon=True, facecolor="white", loc="lower center",
-        bbox_to_anchor=(0.5, 1.01), ncol=2, fontsize=8.8,
+        frameon=True, facecolor="white", loc="upper center",
+        ncol=2, fontsize=8.8,
     )
 
     save_fig(fig, "fig2_latency_breakdown")
