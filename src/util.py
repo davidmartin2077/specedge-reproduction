@@ -173,9 +173,18 @@ class Timing:
             raise ValueError("Device must be specified for sync and event modes")
 
         self.device = device
-        self.mode = mode
+        self._device_type = (
+            torch.device(device).type if device is not None else "cpu"
+        )
+        self.mode = "sync" if (mode == "event" and self._device_type != "cuda") else mode
         self._elapsed = 0.0
         self._enabled = enabled
+
+    def _synchronize(self):
+        if self._device_type == "cuda":
+            torch.cuda.synchronize(self.device)
+        elif self._device_type == "mps":
+            torch.mps.synchronize()
 
     def __enter__(self):
         if not self._enabled:
@@ -196,7 +205,7 @@ class Timing:
             return
 
         if self.mode == "sync":
-            torch.cuda.synchronize(self.device)
+            self._synchronize()
             self._elapsed = (time.perf_counter() - self.start) * 1000
         elif self.mode == "no-sync":
             self._elapsed = (time.perf_counter() - self.start) * 1000

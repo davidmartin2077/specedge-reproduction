@@ -31,10 +31,14 @@ class GraphEngine:
             device=self._device,
             dtype=self._dtype,
         )
-        self._mempool = torch.cuda.graphs.graph_pool_handle()
+        self._use_cuda_graphs = self._device.type == "cuda"
+        self._mempool = (
+            torch.cuda.graphs.graph_pool_handle() if self._use_cuda_graphs else None
+        )
 
         self._replays: dict[int, Callable] = {}
-        self._capture_graphs(capture_only)
+        if self._use_cuda_graphs:
+            self._capture_graphs(capture_only)
 
     @torch.inference_mode()
     def forward(
@@ -60,14 +64,19 @@ class GraphEngine:
             )
         else:
             self._logger.debug("Falling back to non-graph execution")
-            return self._model.forward(
-                input_ids=input_ids,
-                position_ids=position_ids,
-                cache_batch_indices=cache_batch_indices,
-                cache_seq_indices=cache_seq_indices,
-                attention_mask=attention_mask,
-                past_key_values=self._past_key_values,
-            )[0]
+            tmp_seq_indices = self._past_key_values.seq_indices
+            self._past_key_values.seq_indices = tmp_seq_indices[:num_beams]
+            try:
+                return self._model.forward(
+                    input_ids=input_ids,
+                    position_ids=position_ids,
+                    cache_batch_indices=cache_batch_indices,
+                    cache_seq_indices=cache_seq_indices,
+                    attention_mask=attention_mask,
+                    past_key_values=self._past_key_values,
+                )[0]
+            finally:
+                self._past_key_values.seq_indices = tmp_seq_indices
 
     @torch.inference_mode()
     def prefill(
@@ -216,12 +225,11 @@ class BatchGraphEngine:
         self.max_len = max_len
         self.max_batch_size = max_batch_size
         self._max_n_beams = max_n_beams
-        self._use_cuda_graphs = use_cuda_graph
-
         self._model = model
         self._device = self._model.device
         self._dtype = self._model.dtype
         self._config = self._model.config
+        self._use_cuda_graphs = use_cuda_graph and self._device.type == "cuda"
 
         self._past_key_values = KVCache(
             config=self._config,
@@ -231,7 +239,9 @@ class BatchGraphEngine:
             dtype=self._dtype,
             batch_size=self.max_batch_size,
         )
-        self._mempool = torch.cuda.graphs.graph_pool_handle()
+        self._mempool = (
+            torch.cuda.graphs.graph_pool_handle() if self._use_cuda_graphs else None
+        )
 
         self._replays: dict[int, dict[int, Callable]] = {}
 
@@ -263,14 +273,19 @@ class BatchGraphEngine:
             )
         else:
             self._logger.debug("Falling back to non-graph execution")
-            return self._model.forward(
-                input_ids=input_ids,
-                position_ids=position_ids,
-                cache_batch_indices=cache_batch_indices,
-                cache_seq_indices=cache_seq_indices,
-                attention_mask=attention_mask,
-                past_key_values=self._past_key_values,
-            )[0]
+            tmp_seq_indices = self._past_key_values.seq_indices
+            self._past_key_values.seq_indices = tmp_seq_indices[:num_beams]
+            try:
+                return self._model.forward(
+                    input_ids=input_ids,
+                    position_ids=position_ids,
+                    cache_batch_indices=cache_batch_indices,
+                    cache_seq_indices=cache_seq_indices,
+                    attention_mask=attention_mask,
+                    past_key_values=self._past_key_values,
+                )[0]
+            finally:
+                self._past_key_values.seq_indices = tmp_seq_indices
 
     def _capture_graphs(self, capture_only: bool = False):
         self._logger.debug("Capturing graph")

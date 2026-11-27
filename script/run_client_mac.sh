@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+export SPECEDGE_RESULT_PATH="result/three_node_14b"
+export SPECEDGE_EXP_NAME="specedge"
+export SPECEDGE_PROCESS_NAME="client_mac_0.6b"
+export SPECEDGE_SEED="42"
+export SPECEDGE_OPTIMIZATION="2"
+export SPECEDGE_MAX_LEN="2048"
+
+export SPECEDGE_DRAFT_MODEL="${SPECEDGE_DRAFT_MODEL:-./models/Qwen3-0.6B}"
+export SPECEDGE_DEVICE="${SPECEDGE_DEVICE:-mps}"
+export SPECEDGE_DTYPE="fp16"
+export SPECEDGE_REASONING="False"
+
+export SPECEDGE_DATASET="specbench"
+export SPECEDGE_MAX_N_BEAMS="32"
+export SPECEDGE_MAX_BEAM_LEN="4"
+export SPECEDGE_MAX_BRANCH_WIDTH="16"
+export SPECEDGE_MAX_BUDGET="32"
+
+export SPECEDGE_PROACTIVE_TYPE="excluded"
+export SPECEDGE_PROACTIVE_MAX_N_BEAMS="32"
+export SPECEDGE_PROACTIVE_MAX_BEAM_LEN="3"
+export SPECEDGE_PROACTIVE_MAX_BRANCH_WIDTH="16"
+export SPECEDGE_PROACTIVE_MAX_BUDGET="32"
+
+export SPECEDGE_MAX_NEW_TOKENS="64"
+export SPECEDGE_MAX_REQUEST_NUM="-1"
+export SPECEDGE_REQ_OFFSET="0"
+export SPECEDGE_SAMPLE_REQ_CNT="48"
+
+export SPECEDGE_HOST="${SPECEDGE_HOST:-100.88.119.25:8000}"
+export SPECEDGE_CLIENT_IDX="${SPECEDGE_CLIENT_IDX:-1}"
+
+exec .venv/bin/python -O src/script/client.py
