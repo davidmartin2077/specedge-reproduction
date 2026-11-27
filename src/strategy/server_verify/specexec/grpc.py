@@ -434,6 +434,7 @@ class InferenceController:
         prefill_indices: list[tuple[int, int]] = []
         self._engine._past_key_values.clear()
 
+        self._req_lens = [self._max_budget + 1] * self._batch_size
         for batch_idx, req in enumerate(batch):
             client_idx = req.client_idx
             self._client_indices[batch_idx] = client_idx
@@ -444,26 +445,41 @@ class InferenceController:
             else:
                 self._iter_idx[req.client_idx] += 1
 
-            self._input_ids[batch_idx].copy_(
-                util.decode(req.input_ids, self._device, torch.long, (-1,))
+            dec_input_ids = util.decode(req.input_ids, self._device, torch.long, (-1,))
+            dec_pos_ids = util.decode(req.position_ids, self._device, torch.long, (-1,))
+            dec_par_ids = util.decode(
+                req.parent_indices, self._device, torch.long, (-1,)
             )
-            self._position_ids[batch_idx].copy_(
-                util.decode(req.position_ids, self._device, torch.long, (-1,))
+            dec_seq_ids = util.decode(
+                req.cache_seq_indices, self._device, torch.long, (-1,)
             )
-            self._parent_indices[batch_idx].copy_(
-                util.decode(req.parent_indices, self._device, torch.long, (-1,))
+            dec_attn_mask = util.decode(
+                req.attention_mask,
+                self._device,
+                self._dtype,
+                (1, -1, self._max_len),
             )
-            self._cache_seq_indices[batch_idx].copy_(
-                util.decode(req.cache_seq_indices, self._device, torch.long, (-1,))
-            )
-            self._attention_mask[batch_idx].copy_(
-                util.decode(
-                    req.attention_mask,
-                    self._device,
-                    self._dtype,
-                    (1, -1, self._max_len),
-                )
-            )
+
+            req_len = dec_input_ids.numel()
+            self._req_lens[batch_idx] = req_len
+            if req_len == self._max_budget + 1:
+                self._input_ids[batch_idx].copy_(dec_input_ids)
+                self._position_ids[batch_idx].copy_(dec_pos_ids)
+                self._parent_indices[batch_idx].copy_(dec_par_ids)
+                self._cache_seq_indices[batch_idx].copy_(dec_seq_ids)
+                self._attention_mask[batch_idx].copy_(dec_attn_mask)
+            else:
+                self._input_ids[batch_idx].zero_()
+                self._input_ids[batch_idx, :req_len].copy_(dec_input_ids)
+                self._position_ids[batch_idx].zero_()
+                self._position_ids[batch_idx, :req_len].copy_(dec_pos_ids)
+                self._parent_indices[batch_idx].fill_(dec_seq_ids[0].item())
+                self._parent_indices[batch_idx, : req_len - 1].copy_(dec_par_ids)
+                self._cache_seq_indices[batch_idx].fill_(self._max_len - 1)
+                self._cache_seq_indices[batch_idx, :req_len].copy_(dec_seq_ids)
+                self._attention_mask[batch_idx].zero_()
+                self._attention_mask[batch_idx, :, :req_len, :].copy_(dec_attn_mask)
+                self._attention_mask[batch_idx, :, req_len:, 0] = 1.0
 
             if not req.prefill:
                 self._engine._past_key_values.k_cache[:, batch_idx, ...].copy_(
@@ -524,9 +540,13 @@ class InferenceController:
         for batch_idx, client_idx in enumerate(self._client_indices):
             if client_idx == -1:
                 continue
+            req_len = self._req_lens[batch_idx]
             self._resp_queue.put(
                 (
-                    (util.encode(selection[batch_idx]), len(prefill_indices)),
+                    (
+                        util.encode(selection[batch_idx, :req_len]),
+                        len(prefill_indices),
+                    ),
                     client_idx.item(),
                 )
             )
@@ -562,21 +582,24 @@ class InferenceController:
         _batch_indices = self._cache_batch_indices.flatten()
         _seq_indices = self._cache_seq_indices.flatten()
 
-        tree_mask = torch.empty(
+        tree_mask = torch.zeros(
             (self._batch_size, self._max_budget, self._max_budget),
             dtype=torch.float16,
             device=self._device,
         )
 
+        position = self._position_ids[:, 1:] - offset
         for batch_idx in range(self._batch_size):
+            valid_budget = self._req_lens[batch_idx] - 1
             b_offset = self._cache_seq_indices[batch_idx, 1]
-            tree_mask[batch_idx].copy_(
+            tree_mask[batch_idx, :valid_budget, :valid_budget].copy_(
                 self._attention_mask[
-                    batch_idx, 0, 1:, b_offset : b_offset + self._max_budget
+                    batch_idx, 0, 1 : valid_budget + 1, b_offset : b_offset + valid_budget
                 ]
             )
-
-        position = self._position_ids[:, 1:] - offset
+            if valid_budget < self._max_budget:
+                logit_mask[batch_idx, valid_budget:] = False
+                position[batch_idx, valid_budget:] = 0
 
         accepted_mask = logit_mask[:, None, :] & tree_mask.to(torch.bool)
 

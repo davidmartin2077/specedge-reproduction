@@ -67,6 +67,13 @@ async def main():
             tokenizer=tokenizer,
         )
 
+    logger.info("All requests completed.")
+    import logging
+    import os
+
+    logging.shutdown()
+    os._exit(0)
+
 
 async def generate(engine, tokenizer, req_idx: int, prompt: str):
     client = SpecExecClient(
@@ -86,3 +93,8 @@ if __name__ == "__main__":
     log.log_unexpected_exception()
 
     asyncio.run(main())
+    import logging
+    import os
+
+    logging.shutdown()
+    os._exit(0)
