@@ -2,7 +2,7 @@
 
 本项目基于 NeurIPS 2025 论文 **SpecEdge**（[`kaist-ina/specedge`](https://github.com/kaist-ina/specedge)）展开二次工程改造与控制变量实证研究，将原本仅面向“同构 Linux + NVIDIA CUDA + 10 GbE 局域网”的端边协同推理框架，扩展并优化至真实的**跨平台消费级异构广域网三机集群**（Windows + WSL2 + macOS，NVIDIA CUDA + Apple Silicon MPS，Tailscale 广域网组网）。
 
-> 📄 **完整交付报告（NeurIPS 2025 会议论文排版）**：[NeurIPS 排版成稿 PDF (8 页)](docs/course_report.pdf) · [LaTeX 论文源码 (`paper.tex`)](docs/paper.tex) · [NeurIPS 样式包 (`neurips_2025.sty`)](docs/neurips_2025.sty) · [Markdown 版本](docs/course_report.md) · [全量实测数据](docs/exp_summary.json)
+> 📄 **完整交付报告（IEEE Conference 双栏会议模板）**：[IEEE 双栏排版 PDF (6 页)](docs/course_report.pdf) · [IEEEtran LaTeX 源码 (`paper.tex`)](docs/paper.tex) · [Markdown 版本](docs/course_report.md) · [全量实测数据](docs/exp_summary.json)
 
 ---
 
@@ -25,7 +25,7 @@
 | **跨后端同步计时** | [`src/util.py`](src/util.py) | 扩展 `Timing` 支持 `torch.mps.synchronize()`，非 CUDA 设备的 `event` 模式平滑回退至 `sync` |
 | **Variable-Budget 静态图零填充** | [`src/strategy/server_verify/specexec/grpc.py`](src/strategy/server_verify/specexec/grpc.py) | 服务端仅捕获单一 `max_budget=64` 静态 CUDA Graph，对小预算树（如 `b=16`）自动零填充、重定向哑 KV 槽并屏蔽掩码，以仅 **+2.0 ms** 开销支持异构树预算并发验证 |
 | **Windows 客户端退出加固** | [`src/script/client.py`](src/script/client.py) | 在请求循环结束后显式刷新日志并退出，解决 Windows Python 3.14 下 `grpc.aio` 后台线程挂起问题 |
-| **NeurIPS 论文级绘图与排版管线** | [`script/plot_report_figures.py`](script/plot_report_figures.py)、[`script/build_pdf.py`](script/build_pdf.py)、[`docs/neurips_2025.sty`](docs/neurips_2025.sty) | 从原始 `.jsonl` 一键生成 6 张 NeurIPS 配色 STIX 公式图表（PNG / SVG / PDF）及 8 页 NeurIPS 2025 规范排版 PDF（含三线表、编号公式与 Algorithm 1 伪代码） |
+| **IEEE 论文级绘图与双栏排版管线** | [`script/plot_report_figures.py`](script/plot_report_figures.py)、[`script/build_pdf.py`](script/build_pdf.py) | 从原始 `.jsonl` 一键生成 6 张学术配色 STIX 公式图表（PNG / SVG / PDF）及 6 页 **IEEE Conference (`IEEEtran`)** 双栏成稿 PDF（含三线表、编号公式与 Algorithm 1 伪代码） |
 
 ---
 
@@ -103,9 +103,8 @@ python script/build_pdf.py
 │   ├── specedge_3node.example.yaml   # 三机异构配置模板
 │   └── *.example.yaml                # 原版基线配置模板
 ├── docs/
-│   ├── course_report.pdf             # NeurIPS 2025 会议模板排版成稿（8 页 PDF）
-│   ├── paper.tex                     # NeurIPS 2025 LaTeX 论文源码（支持 XeLaTeX / Overleaf）
-│   ├── neurips_2025.sty              # NeurIPS 2025 会议论文样式包
+│   ├── course_report.pdf             # IEEE Conference (IEEEtran) 双栏成稿（6 页 PDF）
+│   ├── paper.tex                     # IEEEtran LaTeX 论文源码（支持 XeLaTeX / Overleaf）
 │   ├── course_report.md              # 完整课程研究报告（Markdown）
 │   ├── exp_summary.json              # 全部 18 组实测统计汇总
 │   ├── reproduction_report.md        # 初期三机联调复现记录
@@ -114,8 +113,8 @@ python script/build_pdf.py
 │   ├── run_client_node.ps1           # Windows CUDA 边缘端启动脚本
 │   ├── run_client_mac.sh             # macOS MPS 边缘端启动脚本
 │   ├── run_3node_exp.ps1             # 三机并发调度脚本
-│   ├── plot_report_figures.py        # 6 张 NeurIPS 论文级图表生成脚本
-│   └── build_pdf.py                  # NeurIPS 2025 风格 PDF 构建脚本
+│   ├── plot_report_figures.py        # 6 张论文级图表生成脚本
+│   └── build_pdf.py                  # IEEE Conference 双栏 PDF 构建脚本
 └── src/                              # 含 MPS 兼容与 Variable-Budget 零填充改造的核心源码
 ```
 
