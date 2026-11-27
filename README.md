@@ -2,7 +2,9 @@
 
 本项目基于 NeurIPS 2025 论文 **SpecEdge**（[`kaist-ina/specedge`](https://github.com/kaist-ina/specedge)）展开二次工程改造与控制变量实证研究，将原本仅面向“同构 Linux + NVIDIA CUDA + 10 GbE 局域网”的端边协同推理框架，扩展并优化至真实的**跨平台消费级异构广域网三机集群**（Windows + WSL2 + macOS，NVIDIA CUDA + Apple Silicon MPS，Tailscale 广域网组网）。
 
-> 📄 **完整交付报告（IEEE Conference 双栏会议模板）**：[IEEE 双栏排版 PDF (6 页)](docs/course_report.pdf) · [IEEEtran LaTeX 源码 (`paper.tex`)](docs/paper.tex) · [Markdown 版本](docs/course_report.md) · [全量实测数据](docs/exp_summary.json)
+> 📄 **完整交付报告（IEEE Conference 双栏模板）**：
+> - **英文 Workshop-Level 论文（严格 10pt / 12pt 行距，满足课程提交要求）**：[英文 IEEE 双栏 PDF](docs/ieee_paper_en.pdf) · [英文 `IEEEtran` LaTeX 源码 (`ieee_paper_en.tex`)](docs/ieee_paper_en.tex) · [英文矢量配图 (`docs/figures_en/`)](docs/figures_en/)
+> - **中文配套报告与数据**：[中文 IEEE 双栏 PDF](docs/course_report.pdf) · [中文 LaTeX (`paper.tex`)](docs/paper.tex) · [Markdown 版本](docs/course_report.md) · [全量实测数据](docs/exp_summary.json)
 
 ---
 
@@ -103,18 +105,23 @@ python script/build_pdf.py
 │   ├── specedge_3node.example.yaml   # 三机异构配置模板
 │   └── *.example.yaml                # 原版基线配置模板
 ├── docs/
-│   ├── course_report.pdf             # IEEE Conference (IEEEtran) 双栏成稿（6 页 PDF）
-│   ├── paper.tex                     # IEEEtran LaTeX 论文源码（支持 XeLaTeX / Overleaf）
-│   ├── course_report.md              # 完整课程研究报告（Markdown）
+│   ├── ieee_paper_en.pdf             # 英文 IEEE Conference 双栏论文（10pt/12pt，课程提交主稿）
+│   ├── ieee_paper_en.tex             # 英文 IEEEtran LaTeX 论文源码（Overleaf pdfLaTeX 直接编译）
+│   ├── figures_en/                   # 6 张英文 IEEE 论文配图（PNG / SVG / PDF）
+│   ├── course_report.pdf             # 中文 IEEE Conference 双栏成稿（6 页 PDF）
+│   ├── paper.tex                     # 中文 IEEEtran LaTeX 论文源码（XeLaTeX）
+│   ├── course_report.md              # 中文完整课程研究报告（Markdown）
 │   ├── exp_summary.json              # 全部 18 组实测统计汇总
 │   ├── reproduction_report.md        # 初期三机联调复现记录
-│   └── figures/                      # fig1~fig6（300 DPI PNG + 矢量 SVG + 矢量 PDF）
+│   └── figures/                      # 6 张中文论文配图（PNG / SVG / PDF）
 ├── script/
 │   ├── run_client_node.ps1           # Windows CUDA 边缘端启动脚本
 │   ├── run_client_mac.sh             # macOS MPS 边缘端启动脚本
 │   ├── run_3node_exp.ps1             # 三机并发调度脚本
-│   ├── plot_report_figures.py        # 6 张论文级图表生成脚本
-│   └── build_pdf.py                  # IEEE Conference 双栏 PDF 构建脚本
+│   ├── plot_ieee_en_figures.py       # 6 张英文 IEEE 配图生成脚本
+│   ├── build_ieee_en_pdf.py          # 英文 10pt/12pt IEEE 双栏 PDF 构建脚本
+│   ├── plot_report_figures.py        # 6 张中文论文配图生成脚本
+│   └── build_pdf.py                  # 中文 IEEE 双栏 PDF 构建脚本
 └── src/                              # 含 MPS 兼容与 Variable-Budget 零填充改造的核心源码
 ```
 
